@@ -1,0 +1,43 @@
+name: Checkpoint
+
+on:
+  schedule:
+    # 17:00 UTC Minggu/Selasa/Kamis = 00:00 Asia/Jakarta Senin/Rabu/Jumat
+    - cron: "0 17 * * 0,2,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  open-checkpoint:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Buka issue checkpoint
+        working-directory: .github/scripts
+        run: |
+          TITLE="$(python checkpoint.py)"
+          if [ -z "$TITLE" ]; then
+            echo "Bukan hari checkpoint atau sudah lewat 2027-01-20."
+            exit 0
+          fi
+          gh label create checkpoint --repo "$GITHUB_REPOSITORY" --force --color 0e8a16 \
+            --description "Checkpoint Senin/Rabu/Jumat"
+          EXISTING="$(gh issue list --repo "$GITHUB_REPOSITORY" --label checkpoint --state all \
+            --search "\"$TITLE\" in:title" --json title --jq "[.[] | select(.title == \"$TITLE\")] | length")"
+          if [ "$EXISTING" != "0" ]; then
+            echo "Issue '$TITLE' sudah ada."
+            exit 0
+          fi
+          python -c "import checkpoint; print(checkpoint.CHECKPOINT_BODY)" > /tmp/body.md
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" \
+            --body-file /tmp/body.md --label checkpoint
